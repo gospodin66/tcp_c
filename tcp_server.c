@@ -151,7 +151,7 @@ void *send_handler(void *args) // passing multiple args by pointer to struct
         }
     }
 
-    close(send_args->sock); // ONLY ONE SOCKET!!
+    close(send_args->sock);
     free(send_args);
 
     printf("Send handler %ld exited normaly..\n", pthread_self());
