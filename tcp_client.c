@@ -40,6 +40,7 @@ void recv__file(int sockfd)
 
     printf("FPATH %s\n", fpath);
 
+
     if(realpath(fpath, NULL) != NULL)
         if(remove(fpath) == 0)
             printf("File deleted. Creating new file.\n");
