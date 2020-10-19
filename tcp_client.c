@@ -92,8 +92,8 @@ void recv__file(int sockfd)
     return;
 }
 
-
-void *send_handler(void *args) // passing multiple args by pointer to struct
+// passing multiple args by pointer to struct
+void *send_handler(void *args)
 { 
     thr_args *send_args = args;
     ssize_t bytes = 0;
@@ -198,7 +198,7 @@ int main(int argc, const char **argv)
 {
     struct sockaddr_in serv_addr;  // dest
     char input_addr [15];
-    int conv_addr = 0;             // converted addr
+    int conv_addr = 0;  // converted addr
     int port = 0;
     int i;
 
@@ -217,7 +217,6 @@ int main(int argc, const char **argv)
     }
 
     strncpy(input_addr, argv[1], strlen(argv[1]));
-    
 
     for(i=0; i<strlen(argv[2]); i++) {
 
@@ -269,9 +268,6 @@ int main(int argc, const char **argv)
     if(pthread_create(&send_handler_id, NULL, send_handler, args) != 0){
         printf("Error creating send handler..");
     }
-
-
-    printf("Joining 2 threads..\n");
 
     if(pthread_join(send_handler_id,NULL) == 0 
      && pthread_join(recv_handler_id,NULL) == 0){

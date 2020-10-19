@@ -19,7 +19,7 @@
 #define THRNUM 100 // 50 connections
 
 /*
-    compile => gcc -lpthread -o tcp_server tcp_server.c
+    compile => gcc -(l)pthread -o tcp_server tcp_server.c
 
     OUTPUT convert to Network Byte Order 
     INPUT  convert to Host    Byte Order
@@ -193,10 +193,13 @@ void *recv_handler(void *args)
     pthread_exit(0);
 }
 
-
+bool isValidIp(const char *ip){
+    struct sockaddr_in test;
+    int result = inet_pton(AF_INET, ip, &(test.sin_addr));
+    return result == 1;
+}
 
 int main(int argc, const char **argv) {
-
     struct sockaddr_in client_addr;           // client addr
     int server_fd;                            
     int opt = 1;                              // sock option
@@ -205,25 +208,33 @@ int main(int argc, const char **argv) {
     int port = 0;
     int i;
 
+    memset(&client_addr, '\0', sizeof(client_addr));
+    memset(buffer, '\0', sizeof(buffer));
 
-    if(argc < 2) {
-        printf("Enter port.\n");
+    if(argc < 3)
+    {
+        printf("Enter ip/port.\nUsage: ./client <ip_addr> <port>\n");
         return 1;
     }
 
-    for(i=0; i<strlen(argv[1]); i++) {
+    if(!isValidIp(argv[1])){
+        printf("Invalid ip.\n");
+        return 1;
+    }
 
-        if(!isdigit(argv[1][i])) {
+
+    for(i=0; i<strlen(argv[2]); i++)
+    {
+        if(!isdigit(argv[2][i])) {
             printf("Invalid port.\n");
             return 1;
         }
     }
 
-    if((port = atoi(argv[1])) > 65535 && port < 0){
+    if((port = atoi(argv[2])) > 65535 && port < 0){
         printf("Port number not in range.\n");
         return 1;
     }
-
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {   // in socket() function, 0 is default protocol [TCP]
         perror("socket failed");
@@ -258,19 +269,18 @@ int main(int argc, const char **argv) {
     {
 
         thr_args *args = malloc(sizeof *args);       
-        char clientAddr [16] = "";                   // displaying ips
+        char clientAddr [16] = "";     // displaying ips
 
         if ((args->sock = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t*)&addrlen))<0) {
             perror("accept");
             exit(EXIT_FAILURE);
         }
 
-
         // convert addr from network format to text format
         inet_ntop(AF_INET, &client_addr.sin_addr.s_addr, clientAddr, sizeof(clientAddr));
         printf("Client [%s:%d] connected!\n",clientAddr, client_addr.sin_port);
 
-        args->port = client_addr.sin_port;           // copy client port -> handler parameter
+        args->port = client_addr.sin_port;   // copy client port -> handler parameter
 
         // handler param
         strncpy(args->converted_addr, clientAddr, strlen(clientAddr));
