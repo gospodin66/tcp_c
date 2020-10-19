@@ -75,7 +75,7 @@ bool send__file(int sockfd)
             fpath[len - 1] = '\0';
     }
 
-    if ((fp = fopen(fpath, "rb")) == NULL){
+    if ((fp = fopen(fpath, "r")) == NULL){
         fprintf(stderr, "Error fopen()\n");
         return false;
     }
