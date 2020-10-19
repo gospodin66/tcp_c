@@ -67,7 +67,6 @@ bool send__file(int sockfd)
     printf("Enter file path: ");
     if(fgets(fpath, sizeof(fpath), stdin) != NULL)
     {
-
         size_t len = strlen(fpath);
         if(len > MAX_BUFFER)
             return false;
@@ -76,7 +75,7 @@ bool send__file(int sockfd)
             fpath[len - 1] = '\0';
     }
 
-    if ((fp = fopen(fpath, "r")) == NULL){
+    if ((fp = fopen(fpath, "rb")) == NULL){
         fprintf(stderr, "Error fopen()\n");
         return false;
     }
@@ -90,7 +89,7 @@ bool send__file(int sockfd)
 
 
     sleep(1);
-    // send 'sq_end' seq as flag indicating EOF
+    // send seq as flag indicating EOF
     bytes += send(sockfd, end_seq, strlen(end_seq), 0);
     
     printf("Sent: [%ld]b\n", bytes);
