@@ -19,12 +19,12 @@
 #define THRNUM 100 // 50 connections
 
 /*
-    compile => gcc -(l)pthread -o tcp_server tcp_server.c (-lm)
+    compile => gcc -(l)pthread -o server tcp_server.c (-lm)
     - The math library must be linked in when building the executable. How to do this varies by environment, but in Linux/Unix, just add -lm to the command:
+    - used to fetch filesize
 
     OUTPUT convert to Network Byte Order 
     INPUT  convert to Host    Byte Order
-
 
     // presentation to network
     inet_pton(AF_INET, ip_addr, &(sa.sin_addr)); // IPv4
@@ -62,10 +62,10 @@ bool send__file(int sockfd)
     FILE *fp;
     char *end_seq = "--sf--end";
     char fpath[MAX_BUFFER];
-    ssize_t bytes = 0;
-    ssize_t overall_bytes = 0;
-    ssize_t filesize = 0;
+    ssize_t bytes, overall_bytes, filesize = 0;
+    ssize_t overall_fbytes, fbytes, bytesleft;
     char *metadata, *strfilesize, *data;
+    int n_digits_fsize = 0;
 
     printf("Enter file path: ");
     if(fgets(fpath, sizeof(fpath), stdin) != NULL)
@@ -84,16 +84,23 @@ bool send__file(int sockfd)
     }
 
     // get file size
-    fseek(fp, 0L, SEEK_END); /* jump to end of file*/
-    filesize = ftell(fp);    /* current byte of file ==f ilesize*/
+    fseek(fp, 0L, SEEK_END); /* jump to end of file */
+    filesize = ftell(fp);    /* current byte of file == filesize */
     rewind(fp);              /* jump to beginning of file */
     printf("File size: %ld\n", filesize);
 
-    int n_digits_fsize = floor(log10(abs(filesize))) + 1;
-    metadata = malloc(strlen(fpath) + n_digits_fsize);
+    // convert filesize to string
+    n_digits_fsize = floor(log10(abs(filesize))) + 1;
+    metadata = malloc(strlen(fpath) +1 + n_digits_fsize);
     strfilesize = malloc(strlen(metadata) +1);
 
-    sprintf(strfilesize, "%ld", filesize); // convert to string
+    if(metadata == NULL || strfilesize == NULL){
+        perror("metadata or strfilesize malloc failed.");
+        return false;
+    }
+
+    // convert to string & concat metadata
+    sprintf(strfilesize, "%ld", filesize);
     strcat(metadata, strfilesize);
     strcat(metadata, fpath);
 
@@ -104,27 +111,35 @@ bool send__file(int sockfd)
         return false;
     }
 
-    ssize_t bytesleft = filesize;
-    ssize_t overall_n, fbytes;
+    free(metadata);
+    free(strfilesize);
 
-    printf("Sending data..\n");
-    sleep(1);
-    data = malloc(filesize);
+    bytesleft = filesize;
+
+    printf("Sending data..\n");    
+    data = malloc(filesize); // allocate filesize memory for data
+    if(data == NULL){
+        perror("data malloc failed.");
+        return false;
+    }
+
     while((fbytes = fread(data, sizeof(char), filesize, fp)) > 0)
     {
+        overall_fbytes += fbytes;
+        
         if((bytes = send(sockfd, data, fbytes, 0)) == -1){
             perror("send data failed.");
             return false;
         }
-        memset(data, 0, MAX_BUFFER);
-        overall_n += fbytes;
+        memset(data, 0, filesize);
+
         overall_bytes += bytes;
         bytesleft -= bytes;
     }
 
     // send seq as flag indicating EOF
     printf("Sending end-seq..\n");
-    sleep(1);
+    sleep(1); // useless??
     if((bytes = send(sockfd, end_seq, strlen(end_seq), 0)) == -1){
         perror("send end-seq. failed.");
         return false;
@@ -132,10 +147,9 @@ bool send__file(int sockfd)
     if(overall_bytes != filesize){
         printf("Data loss: fsize: %ld / sent: %ld / bytes-left: %ld", filesize, overall_bytes, bytesleft);
     } else {
-        printf("Success!\nSent: [%ld]b\n", overall_bytes);
+        printf("Success!\nRead from file: [%ld]\nSent: [%ld]b\n", overall_fbytes, overall_bytes);
     }
-    free(metadata);
-    free(strfilesize);
+    free(data);
     fclose(fp);
     return true;
 }
@@ -262,7 +276,6 @@ int main(int argc, const char **argv) {
         printf("Invalid ip.\n");
         return 1;
     }
-
 
     for(i=0; i<strlen(argv[2]); i++)
     {

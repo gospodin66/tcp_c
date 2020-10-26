@@ -15,7 +15,7 @@
 #define MAX_BUFFER 1024
 
 /*
-    compile => gcc -(l)pthread -o tcp_server tcp_server.c
+    compile => gcc -(l)pthread -o client tcp_client.c
 */
 
 typedef struct {
@@ -25,14 +25,12 @@ typedef struct {
 } thr_args;
 
 
-
 bool recv__file(int sockfd)
 {
     FILE *fp;
-    char buff[MAX_BUFFER], recv_file[MAX_BUFFER];
-    char *strfilesize;
+    char buff[MAX_BUFFER], recv_file[MAX_BUFFER], chr_to_str[1];
     ssize_t bytes, send_bytes;
-    char *ext, *fulllfpath, *chr_to_str, *ptrstrtolend;
+    char *ext, *fulllfpath, *ptrstrtolend, *strfilesize; // ext & ptrstrtolend don't use malloc??
     char *lfpath = "./recvfile";
     int i, cnt, overall_bytes = 0;
     ssize_t filesize = 0;
@@ -42,10 +40,15 @@ bool recv__file(int sockfd)
         return false;
     }
 
-    ext = strchr(recv_file, '.');
-    strfilesize = malloc(strlen(recv_file) - strlen(ext));
-    chr_to_str = malloc(1+1); // temp "char" string
+    ext = strrchr(recv_file, '.');
+    strfilesize = malloc((strlen(recv_file) +1) - (strlen(ext) +1));
 
+    if(strfilesize == NULL){
+        perror("strfilesize malloc failed.");
+        return false;
+    }
+
+    // strcat operates on strings => chr_to_str as temp var
     for(i=0;i<strlen(recv_file);i++)
     {
         chr_to_str[0] = recv_file[i];
@@ -54,8 +57,8 @@ bool recv__file(int sockfd)
         }
     }
 
-    filesize = strtol(strfilesize, &ptrstrtolend,10); // convert to long
-    printf("ext: %s\nfilesize: %ld\n", ext, filesize);
+    filesize = strtol(strfilesize, &ptrstrtolend, 10); // convert to long
+    printf("Extension: %s\nFile size: %ld\n", ext, filesize);
 
     if(ext == NULL){
         printf("No file extension\n");
@@ -63,10 +66,14 @@ bool recv__file(int sockfd)
         strncpy(fulllfpath, lfpath, strlen(lfpath) +1);
     }
     else {
-        fulllfpath = malloc(strlen(lfpath) + strlen(ext) +1); // +1 for null term.
-        // TODO: check for malloc errors
+        fulllfpath = malloc(strlen(lfpath)+1 + strlen(ext) +1);
         strncpy(fulllfpath, lfpath, strlen(lfpath) +1);
         strcat(fulllfpath, ext);
+    }
+
+    if(fulllfpath == NULL){
+        perror("fullpath malloc error.");
+        return false;
     }
 
     if(fulllfpath[strlen(fulllfpath) -1] == '\n')
@@ -93,26 +100,21 @@ bool recv__file(int sockfd)
             overall_bytes += bytes;
 
             printf("Iteration [%d] - Bytes [%ld]\n", cnt, bytes);
-
             // close after spqcial sequence recieved => EOF
             if(strstr(buff, "--sf--end") != NULL){
                 printf("End of transmission..\n");
                 break;
             }
-
-            if (fwrite(buff, sizeof(char), bytes, fp) != bytes)
-            {
+            if (fwrite(buff, sizeof(char), bytes, fp) != bytes){
                 perror("Write File Error");
                 break;
             }
         }
-
         if(bytes == 0){
             printf("Server disconnected.\n");
             break;
         }
-
-        else if(bytes == -1){ // -1 error
+        if(bytes == -1){
             perror("recv error.");
             return false;
         }
@@ -121,7 +123,6 @@ bool recv__file(int sockfd)
 
     printf("Recieved: [%d]b\n", overall_bytes);
     free(fulllfpath);
-    free(chr_to_str);
     free(strfilesize);
     fclose(fp);
     return true;
