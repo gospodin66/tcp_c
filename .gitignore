@@ -2,5 +2,4 @@ server
 client
 bgnet_usl_c_1.pdf
 /backup
-rfc793.txt
-pf.c
+tcp.pdf

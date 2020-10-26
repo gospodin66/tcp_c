@@ -13,13 +13,14 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
-
+#include <math.h>
 
 #define MAX_BUFFER 1024
 #define THRNUM 100 // 50 connections
 
 /*
-    compile => gcc -(l)pthread -o tcp_server tcp_server.c
+    compile => gcc -(l)pthread -o tcp_server tcp_server.c (-lm)
+    - The math library must be linked in when building the executable. How to do this varies by environment, but in Linux/Unix, just add -lm to the command:
 
     OUTPUT convert to Network Byte Order 
     INPUT  convert to Host    Byte Order
@@ -59,10 +60,12 @@ typedef struct{
 bool send__file(int sockfd)
 {
     FILE *fp;
-    char *end_seq = "-sf-end";
+    char *end_seq = "--sf--end";
     char fpath[MAX_BUFFER];
-    char data[MAX_BUFFER];
     ssize_t bytes = 0;
+    ssize_t overall_bytes = 0;
+    ssize_t filesize = 0;
+    char *metadata, *strfilesize, *data;
 
     printf("Enter file path: ");
     if(fgets(fpath, sizeof(fpath), stdin) != NULL)
@@ -75,24 +78,64 @@ bool send__file(int sockfd)
             fpath[len - 1] = '\0';
     }
 
-    if ((fp = fopen(fpath, "r")) == NULL){
-        fprintf(stderr, "Error fopen()\n");
+    if ((fp = fopen(fpath, "rb")) == NULL){
+        fprintf(stderr, "Error fopen() rb\n");
         return false;
     }
 
-   
-    send(sockfd, fpath, strlen(fpath), 0);
+    // get file size
+    fseek(fp, 0L, SEEK_END); /* jump to end of file*/
+    filesize = ftell(fp);    /* current byte of file ==f ilesize*/
+    rewind(fp);              /* jump to beginning of file */
+    printf("File size: %ld\n", filesize);
+
+    int n_digits_fsize = floor(log10(abs(filesize))) + 1;
+    metadata = malloc(strlen(fpath) + n_digits_fsize);
+    strfilesize = malloc(strlen(metadata) +1);
+
+    sprintf(strfilesize, "%ld", filesize); // convert to string
+    strcat(metadata, strfilesize);
+    strcat(metadata, fpath);
+
+    // send file metadata
+    printf("Sending file metadata..\n");
+    if((bytes = send(sockfd, metadata, strlen(metadata), 0)) == -1){
+        perror("send file metadata failed.");
+        return false;
+    }
+
+    ssize_t bytesleft = filesize;
+    ssize_t overall_n, fbytes;
+
+    printf("Sending data..\n");
     sleep(1);
+    data = malloc(filesize);
+    while((fbytes = fread(data, sizeof(char), filesize, fp)) > 0)
+    {
+        if((bytes = send(sockfd, data, fbytes, 0)) == -1){
+            perror("send data failed.");
+            return false;
+        }
+        memset(data, 0, MAX_BUFFER);
+        overall_n += fbytes;
+        overall_bytes += bytes;
+        bytesleft -= bytes;
+    }
 
-    while(fgets(data, sizeof(data), fp) != NULL)
-        bytes += send(sockfd, data, strlen(data), 0);
-
-
-    sleep(1);
     // send seq as flag indicating EOF
-    bytes += send(sockfd, end_seq, strlen(end_seq), 0);
-    
-    printf("Sent: [%ld]b\n", bytes);
+    printf("Sending end-seq..\n");
+    sleep(1);
+    if((bytes = send(sockfd, end_seq, strlen(end_seq), 0)) == -1){
+        perror("send end-seq. failed.");
+        return false;
+    }
+    if(overall_bytes != filesize){
+        printf("Data loss: fsize: %ld / sent: %ld / bytes-left: %ld", filesize, overall_bytes, bytesleft);
+    } else {
+        printf("Success!\nSent: [%ld]b\n", overall_bytes);
+    }
+    free(metadata);
+    free(strfilesize);
     fclose(fp);
     return true;
 }
@@ -157,7 +200,6 @@ void *send_handler(void *args) // passing multiple args by pointer to struct
     printf("Send handler %ld exited normaly..\n", pthread_self());
     pthread_exit(0);
 }
-
 
 void *recv_handler(void *args)
 {

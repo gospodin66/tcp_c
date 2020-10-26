@@ -26,74 +26,108 @@ typedef struct {
 
 
 
-void recv__file(int sockfd)
+bool recv__file(int sockfd)
 {
     FILE *fp;
-    char buff[MAX_BUFFER];
-    char fpath[MAX_BUFFER];
-    ssize_t bytes;
+    char buff[MAX_BUFFER], recv_file[MAX_BUFFER];
+    char *strfilesize;
+    ssize_t bytes, send_bytes;
+    char *ext, *fulllfpath, *chr_to_str, *ptrstrtolend;
+    char *lfpath = "./recvfile";
+    int i, cnt, overall_bytes = 0;
+    ssize_t filesize = 0;
 
-    if(recv(sockfd, fpath, MAX_BUFFER -1, 0) <= 0){
-        printf("Failed to recieve file extension.\n");
-        return;
+    if(recv(sockfd, recv_file, MAX_BUFFER -1, 0) <= 0){
+        printf("Failed to recieve file metadata.\n");
+        return false;
     }
 
-    printf("FPATH %s\n", fpath);
+    ext = strchr(recv_file, '.');
+    strfilesize = malloc(strlen(recv_file) - strlen(ext));
+    chr_to_str = malloc(1+1); // temp "char" string
 
-
-    if(realpath(fpath, NULL) != NULL)
-        if(remove(fpath) == 0)
-            printf("File deleted. Creating new file.\n");
-
-    if((fp = fopen(fpath, "w")) == NULL){
-        fprintf(stderr, "Error fopen()\n");
-        return;
+    for(i=0;i<strlen(recv_file);i++)
+    {
+        chr_to_str[0] = recv_file[i];
+        if(isdigit(recv_file[i])){
+            strcat(strfilesize, chr_to_str);
+        }
     }
 
-    int cnt=0;
-    int overall_b=0;
+    filesize = strtol(strfilesize, &ptrstrtolend,10); // convert to long
+    printf("ext: %s\nfilesize: %ld\n", ext, filesize);
+
+    if(ext == NULL){
+        printf("No file extension\n");
+        fulllfpath = malloc(strlen(lfpath) +1);
+        strncpy(fulllfpath, lfpath, strlen(lfpath) +1);
+    }
+    else {
+        fulllfpath = malloc(strlen(lfpath) + strlen(ext) +1); // +1 for null term.
+        // TODO: check for malloc errors
+        strncpy(fulllfpath, lfpath, strlen(lfpath) +1);
+        strcat(fulllfpath, ext);
+    }
+
+    if(fulllfpath[strlen(fulllfpath) -1] == '\n')
+        fulllfpath[strlen(fulllfpath) -1] = '\0';
+
+    if((fp = fopen(fulllfpath, "wb")) == NULL){
+        fprintf(stderr, "Error fopen() wb\n");
+        return false;
+    }
+
+    printf("Path: %s\n", realpath(fulllfpath, NULL));
+
     while(1)
     {
         cnt++;
         bytes = 0;
-        memset(buff, '\0', sizeof(buff));
+        memset(buff, 0, sizeof(buff));
 
-        if((bytes = recv(sockfd, buff, MAX_BUFFER -1, 0)) > 0){
-
+        if((bytes = recv(sockfd, buff, MAX_BUFFER -1, 0)) > 0)
+        {
             if(buff[bytes -1] == '\n')
                 buff[bytes -1] = '\0';
 
-            overall_b += bytes;
+            overall_bytes += bytes;
 
-            printf("Iteration [%d] - Bytes [%ld]", cnt, bytes);
-            printf("\n----------------------------\n");
-           // printf("%s", buff);
-            printf("\n----------------------------\n");
+            printf("Iteration [%d] - Bytes [%ld]\n", cnt, bytes);
 
             // close after spqcial sequence recieved => EOF
-            if(!strcmp(strrchr(buff, '\0') -7, "-sf-end")){
+            if(strstr(buff, "--sf--end") != NULL){
                 printf("End of transmission..\n");
                 break;
             }
 
-            fprintf(fp, "%s", buff);
+            if (fwrite(buff, sizeof(char), bytes, fp) != bytes)
+            {
+                perror("Write File Error");
+                break;
+            }
         }
 
-        else if(bytes == 0){
+        if(bytes == 0){
             printf("Server disconnected.\n");
             break;
         }
 
-        else perror("recv");
+        else if(bytes == -1){ // -1 error
+            perror("recv error.");
+            return false;
+        }
+
     }
 
-    printf("Recieved: [%d]b\nPath: %s\n", overall_b, realpath(fpath, NULL));
+    printf("Recieved: [%d]b\n", overall_bytes);
+    free(fulllfpath);
+    free(chr_to_str);
+    free(strfilesize);
     fclose(fp);
-    return;
+    return true;
 }
 
-// passing multiple args by pointer to struct
-void *send_handler(void *args)
+void *send_handler(void *args) // passing multiple args by pointer to struct
 { 
     thr_args *send_args = args;
     ssize_t bytes = 0;
@@ -144,7 +178,6 @@ void *send_handler(void *args)
     pthread_exit(0);
 }
 
-
 void *recv_handler(void *args){
 
     thr_args *recv_args = args;
@@ -161,10 +194,16 @@ void *recv_handler(void *args){
         bytes = recv(recv_args->sock, recv_args->buffer, sizeof(recv_args->buffer), 0);
 
         if(bytes > 0){
-            if(!strncmp(recv_args->buffer,"-sf",3))
+            if(recv_args->buffer[bytes -1] == '\n')
+                recv_args->buffer[bytes -1] = '\0';
+
+            if(strncmp(recv_args->buffer,"-sf",3) == 0)
             {
                 printf("Recieving file..\n");
-                recv__file(recv_args->sock);
+                if(recv__file(recv_args->sock) == false){
+                    printf("recv file error..\n");
+                    break;
+                }
                 memset(recv_args->buffer, 0, MAX_BUFFER);
                 continue;
             }
@@ -178,21 +217,21 @@ void *recv_handler(void *args){
             break;
         }
 
-        else perror("recv");
+        else {
+            perror("recv error");
+            break;
+        }
     }
 
     printf("Recv handler exited normaly..\n");
     pthread_exit(0);
 }
 
-
 bool isValidIp(const char *ip){
     struct sockaddr_in test;
     int result = inet_pton(AF_INET, ip, &(test.sin_addr));
     return result == 1;
 }
-
-
 
 int main(int argc, const char **argv)
 {
