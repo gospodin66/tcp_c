@@ -1,0 +1,59 @@
+#!/bin/bash
+
+if [[ $UID -ne 0 ]];
+then
+    printf "only root creates firewall..\n"
+    exit 1
+fi
+
+#flush default
+iptables -F
+#create chains
+iptables -N TCP
+iptables -N UDP
+iptables -N IN_SSH
+#default policy
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
+#drop all -> explicit allow statements
+iptables -P INPUT DROP
+#accept loopback
+iptables -A INPUT -i lo -j ACCEPT
+#drop any invalid packets
+iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+#drop ping
+iptables -A INPUT -p icmp --icmp-type 8 -m conntrack --ctstate NEW -j DROP
+#reject invalid tcp/udp
+iptables -A INPUT -p udp -m conntrack --ctstate INVALID -j REJECT
+iptables -A INPUT -p tcp --syn -m conntrack --ctstate INVALID -j REJECT
+#reject connections with RESET/ICMP-unreachable packets if ports closed
+iptables -A INPUT -p udp -j REJECT --reject-with icmp-port-unreachable
+iptables -A INPUT -p tcp -j REJECT --reject-with tcp-reset
+#accept current ssh
+iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+#accept webserver
+iptables -A TCP -p tcp --dport 80 -j ACCEPT
+#accept local client
+iptables -A INPUT -s 192.168.1.3 -j ACCEPT
+#accept ssh
+iptables -A TCP -p tcp --dport 22 -j ACCEPT
+#accept incomming tcp/udp for DNS
+iptables -A TCP -p tcp --dport 53 -j ACCEPT
+iptables -A UDP -p udp --dport 53 -j ACCEPT
+#mitigate ssh bruteforce
+iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -j IN_SSH
+iptables -A IN_SSH -m recent --name sshbf --rttl --rcheck --hitcount 3 --seconds 10 -j DROP
+iptables -A IN_SSH -m recent --name sshbf --rttl --rcheck --hitcount 4 --seconds 1800 -j DROP
+iptables -A IN_SSH -m recent --name sshbf --set -j ACCEPT
+#reject all other incoming traffic with ICMP-unreachable packet
+iptables -A INPUT -j REJECT --reject-with icmp-proto-unreachable
+#list rules
+iptables -L --line-numbers
+
+#log
+#iptables -A INPUT -p tcp -j LOG --log-prefix "INPUT packets"
+#list rules iptables-save format
+#iptables -S --line-numbers
+#delete chain
+#iptables -X IN_SSH
+exit 0

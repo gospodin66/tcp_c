@@ -37,16 +37,29 @@
         struct   in_addr      sin_addr;
         unsigned char         sin_zero[8];
     };
-
     struct in_addr {
         uint32_t s_addr; // 4 bytes
     };
-
     int getaddrinfo(const char *node,          // e.g. "www.example.com" or IP
                     const char *service,       // e.g. "http" or port number
                     const struct addrinfo *hints,
                     struct addrinfo **res);
+    ::ssh tunnel::
+    local_machine:$ ssh -L 7171:localhost:7272 remote_user@remote_addr
+    remote_machine:$ ./server 7272
+    local_machine:$ ./client 127.0.0.1 7171
 */
+
+
+
+/***
+ *  TODOS::
+ *  - CTRL + D causes infinite loop
+ *  - sending .bash file results in invalid packets
+ *  - send multiple files in single connection causes fatal error
+ * 
+ **/
+
 
 typedef struct{
     char send_msg[MAX_BUFFER];
