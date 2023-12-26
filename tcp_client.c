@@ -15,8 +15,9 @@
 #define MAX_BUFFER 1024
 
 /*
-    compile => gcc -(l)pthread -o client tcp_client.c
-
+    ::compile:: 
+    gcc -(l)pthread -o client tcp_client.c
+    
     ::ssh tunnel::
     local_machine:$ ssh -L 7171:localhost:7272 remote_user@remote_addr
     remote_machine:$ ./server 7272
@@ -38,20 +39,16 @@ bool recv__file(int sockfd)
     char *lfpath = "./recvfile";
     ssize_t bytes, send_bytes, filesize, overall_bytes = 0;
     int i, cnt = 0;
-
     if(recv(sockfd, recv_file, MAX_BUFFER -1, 0) <= 0){
         perror("recv() metadata error");
         return false;
     }
-
     ext = strrchr(recv_file, '.');
     strfilesize = malloc((strlen(recv_file) +1) - (strlen(ext) +1));
-
     if(strfilesize == NULL){
         perror("malloc() strfilesize error");
         return false;
     }
-
     // strcat operates on strings => chr_to_str as temp var
     for(i=0; i<strlen(recv_file); i++)
     {
@@ -60,10 +57,8 @@ bool recv__file(int sockfd)
             strcat(strfilesize, chr_to_str);
         }
     }
-
     filesize = strtol(strfilesize, &ptrstrtolend, 10); // convert to long
     printf("Extension: %s\nFile size: %ld\n", ext, filesize);
-
     if(ext == NULL){
         printf("No file extension.\n");
         fulllfpath = malloc(strlen(lfpath) +1);
@@ -74,7 +69,6 @@ bool recv__file(int sockfd)
         strncpy(fulllfpath, lfpath, strlen(lfpath) +1);
         strcat(fulllfpath, ext);
     }
-
     if(fulllfpath == NULL){
         perror("malloc() fullpath error");
         return false;
@@ -86,10 +80,8 @@ bool recv__file(int sockfd)
         fprintf(stderr, "error fopen() wb\n");
         return false;
     }
-
     printf("Path: %s\n", realpath(fulllfpath, NULL));
-    while(1)
-    {
+    while(1) {
         cnt++;
         bytes = 0;
         memset(buff, 0, sizeof(buff));
@@ -118,7 +110,6 @@ bool recv__file(int sockfd)
             perror("recv() error");
             return false;
         }
-
     }
     printf("Recieved: [%ld]b\n", overall_bytes);
     free(fulllfpath);
@@ -127,36 +118,32 @@ bool recv__file(int sockfd)
     return true;
 }
 
-void *send_handler(void *args) // passing multiple args by pointer to struct
-{ 
+void *send_handler(void *args) { // passing multiple args by pointer to struct 
     thr_args *send_args = args;
     ssize_t bytes = 0;
     printf("Send handler start..\n");
-    while(1)
-    {
+    while(1) {
         time_t t = time(NULL);
         struct tm tm = *localtime(&t);
         memset(send_args->send_msg, '\0', sizeof(send_args->send_msg));
         fgets(send_args->send_msg, sizeof(send_args->send_msg), stdin);
-
-        if(send_args->send_msg[strlen(send_args->send_msg) -1] == '\n'){
+        if(send_args->send_msg[strlen(send_args->send_msg) -1] == '\n') {
             send_args->send_msg[strlen(send_args->send_msg) -1] = '\0';
         }
-        if(send_args->send_msg[0] == '\0'){
+        if(send_args->send_msg[0] == '\0') {
             printf("Enter msg..\n");
         }
-        else if(!strncmp(send_args->send_msg,"x",1)){
+        else if(!strncmp(send_args->send_msg,"x",1)) {
             printf("[!] Exit.\n");
             exit(0);
         }
-        else
-        {
+        else {
             // check if client is connected
             if(recv(send_args->sock,NULL,1, MSG_PEEK | MSG_DONTWAIT) == 0){
                 printf("Client disconnected.\n");
                 break;
             }
-            if((bytes = send(send_args->sock, send_args->send_msg, strlen(send_args->send_msg), 0)) <= 0){
+            if((bytes = send(send_args->sock, send_args->send_msg, strlen(send_args->send_msg), 0)) <= 0) {
                 perror("send() error");
             }
             printf("%d-%02d-%02d %02d:%02d:%02d: Sent to server! \tbytes: %ld\n",
@@ -174,26 +161,22 @@ void *send_handler(void *args) // passing multiple args by pointer to struct
     pthread_exit(0);
 }
 
-void *recv_handler(void *args)
-{
+void *recv_handler(void *args) {
     thr_args *recv_args = args;
     ssize_t bytes = 0;
     printf("Recv handler start..\n");
-    while(1)
-    {
+    while(1) {
         time_t t = time(NULL);
         struct tm tm = *localtime(&t);
         // returns number of bytes received, or -1 if error
         bytes = recv(recv_args->sock, recv_args->buffer, sizeof(recv_args->buffer), 0);
-        if(bytes > 0)
-        {
+        if(bytes > 0) {
             if(recv_args->buffer[bytes -1] == '\n'){
                 recv_args->buffer[bytes -1] = '\0';
             }
-            if(strncmp(recv_args->buffer,"-sf",3) == 0)
-            {
+            if(strncmp(recv_args->buffer,"-sf",3) == 0) {
                 printf("Recieving file..\n");
-                if(recv__file(recv_args->sock) == false){
+                if(recv__file(recv_args->sock) == false) {
                     perror("recv__file() error");
                     break;
                 }
@@ -226,35 +209,31 @@ void *recv_handler(void *args)
 
 bool isValidIp(const char *ip){
     struct sockaddr_in test;
-    int result = inet_pton(AF_INET, ip, &(test.sin_addr));
-    return result == 1;
+    return inet_pton(AF_INET, ip, &(test.sin_addr)) == 1;
 }
 
 int main(int argc, const char **argv) {
     struct sockaddr_in serv_addr;  /* dest */
     int i, conv_addr, port = 0;    /* converted addr */
     char input_addr [15];
-
     memset(&serv_addr, '\0', sizeof(serv_addr));
     memset(input_addr, '\0', sizeof(input_addr));
-
-    if(argc < 3){
+    if(argc < 3) {
         printf("Enter ip/port.\nUsage: ./client <ip_addr> <port>\n");
         return 1;
     }
-    if(!isValidIp(argv[1])){
+    if(!isValidIp(argv[1])) {
         printf("Invalid ip.\n");
         return 1;
     }
     strncpy(input_addr, argv[1], strlen(argv[1]));
-    for(i=0; i<strlen(argv[2]); i++)
-    {
-        if(!isdigit(argv[2][i])){
+    for(i=0; i<strlen(argv[2]); i++) {
+        if(!isdigit(argv[2][i])) {
             printf("Invalid port.\n");
             return 1;
         }
     }
-    if((port = atoi(argv[2])) > 65535 && port < 0){
+    if((port = atoi(argv[2])) > 65535 && port < 0) {
         printf("Port number not in range.\n");
         return 1;
     }
@@ -263,11 +242,9 @@ int main(int argc, const char **argv) {
         perror("socket() create error");
         return 1;
     }
-
-    serv_addr.sin_family      = AF_INET;
+    serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = inet_addr(input_addr);
-    serv_addr.sin_port        = htons(port);
-
+    serv_addr.sin_port = htons(port);
     conv_addr = inet_pton(AF_INET, input_addr, &serv_addr.sin_addr);
     if(conv_addr <= 0) {
         perror("invalid | not supported address.");
@@ -278,24 +255,23 @@ int main(int argc, const char **argv) {
         perror("connect() failed.");
         return 1;
     }
-
     printf("Connected to host [%s:%d]\n", input_addr, port);
     pthread_t send_handler_id;
     pthread_t recv_handler_id;
-
-    if(pthread_create(&recv_handler_id, NULL, recv_handler, args) != 0){
+    if(pthread_create(&recv_handler_id, NULL, recv_handler, args) != 0) {
         perror("pthread_create() recv_handler error");
         return 1;
     }
-    if(pthread_create(&send_handler_id, NULL, send_handler, args) != 0){
+    if(pthread_create(&send_handler_id, NULL, send_handler, args) != 0) {
         perror("pthread_create() send_handler error");
         return 1;
     }
-    if(pthread_join(send_handler_id,NULL) == 0 
-    && pthread_join(recv_handler_id,NULL) == 0)
-    { printf("Worker disconnected normaly..\n");}
-    else { printf("Worker disconnected with error..\n");}
-    
+    if(pthread_join(send_handler_id,NULL) == 0 && pthread_join(recv_handler_id,NULL) == 0) {
+        printf("Worker disconnected normaly..\n");
+    }
+    else { 
+        printf("Worker disconnected with error..\n");
+    }
     close(args->sock);
     free(args);
     return 0;
